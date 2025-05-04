@@ -3,10 +3,10 @@ class DetalleVenta {
   final int? ventaId;
   final String descripcion;
   final int cantidad;
-  final double precioUnitarioBob;
-  final double precioUnitarioArs;
-  final double subtotalBob;
-  final double subtotalArs;
+  double precioUnitarioBob;
+  double precioUnitarioArs;
+  double subtotalBob;
+  double subtotalArs;
 
   DetalleVenta({
     this.id,

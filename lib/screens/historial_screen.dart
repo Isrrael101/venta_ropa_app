@@ -15,6 +15,8 @@ class _HistorialScreenState extends State<HistorialScreen> {
   DateTime _fechaSeleccionada = DateTime.now();
   List<DetalleVentaConCliente> _detalles = [];
   bool _isLoading = false;
+  String _filtroCliente = 'Todos';
+  List<String> _clientes = ['Todos'];
 
   @override
   void initState() {
@@ -33,8 +35,14 @@ class _HistorialScreenState extends State<HistorialScreen> {
         context,
         listen: false,
       ).getDetallesConClienteByFecha(fecha);
+
+      // Obtener lista única de clientes
+      final clientesUnicos =
+          detalles.map((d) => d.clienteNombre).toSet().toList();
+      clientesUnicos.sort();
       setState(() {
         _detalles = detalles;
+        _clientes = ['Todos', ...clientesUnicos];
       });
     } catch (e) {
       debugPrint('Error al cargar detalles: $e');
@@ -55,13 +63,41 @@ class _HistorialScreenState extends State<HistorialScreen> {
     if (picked != null && picked != _fechaSeleccionada) {
       setState(() {
         _fechaSeleccionada = picked;
+        _filtroCliente = 'Todos';
       });
       _cargarDetalles();
     }
   }
 
+  List<DetalleVentaConCliente> _getDetallesFiltrados() {
+    if (_filtroCliente == 'Todos') {
+      return _detalles;
+    }
+    return _detalles.where((d) => d.clienteNombre == _filtroCliente).toList();
+  }
+
+  Map<String, List<DetalleVentaConCliente>> _agruparPorCliente(
+      List<DetalleVentaConCliente> detalles) {
+    final grupos = <String, List<DetalleVentaConCliente>>{};
+    for (var detalle in detalles) {
+      if (!grupos.containsKey(detalle.clienteNombre)) {
+        grupos[detalle.clienteNombre] = [];
+      }
+      grupos[detalle.clienteNombre]!.add(detalle);
+    }
+    return grupos;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final detallesFiltrados = _getDetallesFiltrados();
+    final gruposPorCliente = _agruparPorCliente(detallesFiltrados);
+    final formatter = NumberFormat.currency(
+      locale: 'es_BO',
+      symbol: '',
+      decimalDigits: 2,
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -79,243 +115,293 @@ class _HistorialScreenState extends State<HistorialScreen> {
       ),
       body: Column(
         children: [
-          // Fecha seleccionada
+          // Fecha seleccionada y filtros
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.blue.shade50,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
               children: [
-                Text(
-                  'Ventas del ${DateFormat('dd/MM/yyyy').format(_fechaSeleccionada)}',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Ventas del ${DateFormat('dd/MM/yyyy').format(_fechaSeleccionada)}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => _seleccionarFecha(context),
+                      icon: const Icon(Icons.calendar_today),
+                      label: const Text('Cambiar fecha'),
+                      style: TextButton.styleFrom(foregroundColor: Colors.blue),
+                    ),
+                  ],
                 ),
-                TextButton.icon(
-                  onPressed: () => _seleccionarFecha(context),
-                  icon: const Icon(Icons.calendar_today),
-                  label: const Text('Cambiar fecha'),
-                  style: TextButton.styleFrom(foregroundColor: Colors.blue),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _filtroCliente,
+                  decoration: const InputDecoration(
+                    labelText: 'Filtrar por Cliente',
+                    border: OutlineInputBorder(),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  items: _clientes.map((cliente) {
+                    return DropdownMenuItem(
+                      value: cliente,
+                      child: Text(cliente),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _filtroCliente = value;
+                      });
+                    }
+                  },
                 ),
               ],
             ),
           ),
           // Lista de ventas
           Expanded(
-            child:
-                _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _detalles.isEmpty
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : detallesFiltrados.isEmpty
                     ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.receipt_long,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No hay ventas registradas\npara el ${DateFormat('dd/MM/yyyy').format(_fechaSeleccionada)}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 16,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.receipt_long,
+                              size: 64,
                               color: Colors.grey,
                             ),
-                          ),
-                        ],
-                      ),
-                    )
-                    : ListView.builder(
-                      itemCount: _detalles.length + 1,
-                      itemBuilder: (context, index) {
-                        if (index == _detalles.length) {
-                          double totalBob = 0;
-                          double totalArs = 0;
-                          for (var detalle in _detalles) {
-                            totalBob += detalle.subtotalBob;
-                            totalArs += detalle.subtotalArs;
-                          }
-
-                          return Card(
-                            margin: const EdgeInsets.all(8),
-                            color: Colors.blue.shade50,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Resumen del Día',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue,
-                                    ),
-                                  ),
-                                  const Divider(),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      const Text(
-                                        'Total de Ventas:',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        _detalles.length.toString(),
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      const Text(
-                                        'Total BOB:',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        totalBob.toStringAsFixed(2),
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.blue,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      const Text(
-                                        'Total ARS:',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        totalArs.toStringAsFixed(2),
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.blue,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                            const SizedBox(height: 16),
+                            Text(
+                              'No hay ventas registradas\npara el ${DateFormat('dd/MM/yyyy').format(_fechaSeleccionada)}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
                               ),
                             ),
-                          );
-                        }
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: gruposPorCliente.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == gruposPorCliente.length) {
+                            double totalBob = 0;
+                            double totalArs = 0;
+                            for (var detalle in detallesFiltrados) {
+                              totalBob += detalle.subtotalBob;
+                              totalArs += detalle.subtotalArs;
+                            }
 
-                        final detalle = _detalles[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Descripción y Cliente
-                                Row(
+                            return Card(
+                              margin: const EdgeInsets.all(8),
+                              color: Colors.blue.shade50,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            detalle.descripcion,
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.grey[700],
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            'Cliente: ${detalle.clienteNombre}',
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              color: Colors.blue,
-                                            ),
-                                          ),
-                                        ],
+                                    const Text(
+                                      'Resumen del Día',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
                                       ),
                                     ),
-                                    Text(
-                                      detalle.fechaHora,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Divider(),
-                                // Cantidad y Precios Unitarios
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      'Cantidad: ${detalle.cantidad}',
-                                      style: const TextStyle(fontSize: 16),
-                                    ),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
+                                    const Divider(),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text(
-                                          'BOB: ${detalle.precioUnitarioBob.toStringAsFixed(2)}',
-                                          style: const TextStyle(fontSize: 16),
+                                        const Text(
+                                          'Total de Ventas:',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                         Text(
-                                          'ARS: ${detalle.precioUnitarioArs.toStringAsFixed(2)}',
-                                          style: const TextStyle(fontSize: 16),
+                                          detallesFiltrados.length.toString(),
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Total BOB:',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Text(
+                                          formatter.format(totalBob),
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Total ARS:',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Text(
+                                          formatter.format(totalArs),
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                // Subtotales
+                              ),
+                            );
+                          }
+
+                          final cliente =
+                              gruposPorCliente.keys.elementAt(index);
+                          final ventasCliente = gruposPorCliente[cliente]!;
+                          double totalClienteBob = 0;
+                          double totalClienteArs = 0;
+                          for (var venta in ventasCliente) {
+                            totalClienteBob += venta.subtotalBob;
+                            totalClienteArs += venta.subtotalArs;
+                          }
+
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Encabezado del cliente
                                 Container(
-                                  padding: const EdgeInsets.all(8),
+                                  padding: const EdgeInsets.all(12),
+                                  color: Colors.blue.shade100,
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          cliente,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${ventasCliente.length} venta${ventasCliente.length > 1 ? 's' : ''}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Lista de ventas del cliente
+                                ...ventasCliente.map((detalle) {
+                                  return Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                detalle.descripcion,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              '${detalle.cantidad} unid.',
+                                              style: const TextStyle(
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              '${formatter.format(detalle.precioUnitarioBob)} BOB',
+                                              style: const TextStyle(
+                                                color: Colors.blue,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${formatter.format(detalle.subtotalBob)} BOB',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                                // Total del cliente
+                                Container(
+                                  padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.grey.shade100,
+                                    border: Border(
+                                      top: BorderSide(
+                                          color: Colors.grey.shade300),
+                                    ),
                                   ),
                                   child: Row(
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
                                       const Text(
-                                        'Subtotales:',
+                                        'Total Cliente:',
                                         style: TextStyle(
-                                          fontSize: 16,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -324,19 +410,17 @@ class _HistorialScreenState extends State<HistorialScreen> {
                                             CrossAxisAlignment.end,
                                         children: [
                                           Text(
-                                            'BOB: ${detalle.subtotalBob.toStringAsFixed(2)}',
+                                            '${formatter.format(totalClienteBob)} BOB',
                                             style: const TextStyle(
-                                              fontSize: 16,
                                               fontWeight: FontWeight.bold,
                                               color: Colors.blue,
                                             ),
                                           ),
                                           Text(
-                                            'ARS: ${detalle.subtotalArs.toStringAsFixed(2)}',
+                                            '${formatter.format(totalClienteArs)} ARS',
                                             style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.blue,
+                                              fontSize: 12,
+                                              color: Colors.grey,
                                             ),
                                           ),
                                         ],
@@ -346,10 +430,9 @@ class _HistorialScreenState extends State<HistorialScreen> {
                                 ),
                               ],
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

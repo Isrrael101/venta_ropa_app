@@ -62,6 +62,18 @@ class VentaProvider with ChangeNotifier {
     }
   }
 
+  void actualizarPrecioEnCarrito(
+      int index, double nuevoPrecioBob, double nuevoPrecioArs) {
+    if (index >= 0 && index < _carrito.length) {
+      final item = _carrito[index];
+      item.precioUnitarioBob = nuevoPrecioBob;
+      item.precioUnitarioArs = nuevoPrecioArs;
+      item.subtotalBob = nuevoPrecioBob * item.cantidad;
+      item.subtotalArs = nuevoPrecioArs * item.cantidad;
+      notifyListeners();
+    }
+  }
+
   void limpiarCarrito() {
     _carrito.clear();
     _clienteSeleccionado = null;
